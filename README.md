@@ -4,11 +4,14 @@
 
 它像一个安静的旁观者，把群里的消息悄悄存下来，然后：
 
-- 📊 **定时日报**：每天固定时间，自动给群里发一份「今天大家都在聊什么」的摘要；
-- 💬 **按需总结**：在群里发一句 `总结 2小时`，马上拿到最近两小时的聊天精华；
+- 📊 **定时日报**：每天固定时间自动生成「今天大家都在聊什么」的摘要，**私聊只发给你一个人**；
+- 💬 **按需总结**：在群里发一句 `总结 2小时`，结果**私聊发给你**；
+- 🔒 **群里零输出**：机器人从不在群里发任何消息，群里其他人既看不到摘要，也无法触发命令；
 - 🤫 **只读模式（可选）**：上线时自动对指定群开启全体禁言，纯收集不打扰。
 
 摘要由任意 **OpenAI 兼容** 的大模型生成（OpenAI / DeepSeek / 月之暗面 / 通义千问 / 本地 Ollama 等）。
+
+> **隐私保证**：所有日报、总结、进度提示都通过 `send_private_msg` 发给配置的 `OWNER_QQ`（你的 QQ 号），不经过任何群聊；只有 `OWNER_QQ` 本人发的命令才会被响应，其他群成员发 `总结`/`日报` 会被静默忽略。
 
 ---
 
@@ -65,12 +68,15 @@ cp .env.example .env
 
 | 变量 | 说明 |
 | --- | --- |
+| `OWNER_QQ` | **你的 QQ 号（必填）**。所有日报/总结只私聊发给这个号 |
 | `ONEBOT_WS_URLS` | NapCat 的正向 WebSocket 地址，如 `["ws://127.0.0.1:3001"]` |
 | `ONEBOT_ACCESS_TOKEN` | NapCat 里设的 token，没设就留空 |
 | `LLM_API_KEY` | 大模型的 API Key |
 | `LLM_BASE_URL` | OpenAI 官方留空；DeepSeek 填 `https://api.deepseek.com/v1` |
 | `LLM_MODEL` | 模型名，如 `gpt-4o-mini`、`deepseek-chat` |
-| `DIGEST_CRON_HOUR` / `DIGEST_CRON_MINUTE` | 日报发送时间（默认 22:00，时区见 `DIGEST_TIMEZONE`） |
+| `DIGEST_CRON_HOUR` / `DIGEST_CRON_MINUTE` | 日报生成时间（默认 22:00，时区见 `DIGEST_TIMEZONE`） |
+
+> 💡 为确保私聊能送达，建议让机器人 QQ 号与你的 `OWNER_QQ` 号**互为好友**（或对方账号允许接收陌生人私聊消息）。
 
 > 用 **DeepSeek** 的完整示例：`LLM_BASE_URL=https://api.deepseek.com/v1`、`LLM_MODEL=deepseek-chat`。
 > 用 **本地 Ollama**：`LLM_BASE_URL=http://127.0.0.1:11434/v1`、`LLM_API_KEY=ollama`、`LLM_MODEL=qwen2.5:7b`。
@@ -101,20 +107,20 @@ python bot.py
 
 ### 定时日报（默认开启）
 
-到点（默认每天 22:00）自动把过去 `DIGEST_LOOKBACK_HOURS` 小时的聊天总结发到群里，格式类似：
+到点（默认每天 22:00）自动总结过去 `DIGEST_LOOKBACK_HOURS` 小时的聊天，**私聊**发给你（`OWNER_QQ`），每个群一条私聊消息，格式类似：
 
-> 📊 群聊日报 · 2026-09-29
+> 📊 群聊日报 · 2026-09-29 · 群「技术交流群」（123456）
 >
 > # 📋 群聊摘要（09-29 22:00 ~ 09-30 22:00）
 > ## 主要话题 …
 > ## 结论与决定 …
 
-- `DIGEST_SEND_GROUPS=[]`（留空）→ 发给**所有有消息的群**；
-- `DIGEST_SEND_GROUPS=[群号1, 群号2]` → 只发这几个群。
+- `DIGEST_GROUPS=[]`（留空）→ 总结**所有有消息的群**；
+- `DIGEST_GROUPS=[群号1, 群号2]` → 只总结这几个群。
 
-### 按需总结
+### 按需总结（仅主人可用）
 
-在群里发送：
+**只有 `OWNER_QQ` 本人**在群里发送命令才会生效（其他人发了也没反应），结果私聊发给你：
 
 | 命令 | 效果 |
 | --- | --- |
@@ -128,7 +134,7 @@ python bot.py
 
 ### 立即生成日报
 
-在群里发送 `日报`，不等定时，立刻生成并发送一份日报。
+在群里发送 `日报`，不等定时，立刻生成并**私聊**发给你。
 
 ### 只读旁观模式（可选）
 
@@ -148,6 +154,7 @@ ON_CONNECT_GROUP_IDS=[群号1, 群号2]
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `OWNER_QQ` | 无（**必填**）| 你的 QQ 号；日报/总结只私聊发给它，且只有它能触发命令 |
 | `ONEBOT_WS_URLS` | `["ws://127.0.0.1:3001"]` | NapCat 正向 WebSocket 地址（列表）|
 | `ONEBOT_ACCESS_TOKEN` | 空 | NapCat 的 token |
 | `TRACK_GROUPS` | `*` | 收集哪些群；`*` 全部，或 `[群号,...]` |
@@ -157,10 +164,10 @@ ON_CONNECT_GROUP_IDS=[群号1, 群号2]
 | `LLM_MODEL` | `gpt-4o-mini` | 模型名 |
 | `LLM_MAX_MESSAGES` | `2000` | 单次最多喂给模型的消息条数（取最近）|
 | `LLM_MAX_CHARS_PER_MESSAGE` | `500` | 单条消息超长时的截断长度 |
-| `DIGEST_CRON_HOUR` / `DIGEST_CRON_MINUTE` | `22` / `0` | 日报时间 |
+| `DIGEST_CRON_HOUR` / `DIGEST_CRON_MINUTE` | `22` / `0` | 日报生成时间 |
 | `DIGEST_TIMEZONE` | `Asia/Shanghai` | 日报时区 |
 | `DIGEST_LOOKBACK_HOURS` | `24` | 日报回看多少小时 |
-| `DIGEST_SEND_GROUPS` | `[]` | 日报发送目标群；空=所有有消息的群 |
+| `DIGEST_GROUPS` | `[]` | 日报要总结的群；空=所有有消息的群（结果私聊发给 `OWNER_QQ`）|
 | `DEFAULT_WINDOW_MINUTES` | `120` | 裸 `总结` 命令的默认窗口 |
 | `DB_PATH` | `data/messages.db` | 消息数据库文件路径 |
 | `DRIVER` | `~fastapi+~websockets` | 不要改（websockets 用于连接 NapCat）|
@@ -211,6 +218,11 @@ python tests/test_integration.py
 
 **Q: 提示 `does not support websocket client connections`？**
 确认 `.env` 里有 `DRIVER=~fastapi+~websockets`，并且装了 `websockets`（`requirements.txt` 已包含）。
+
+**Q: 日报/总结没有私聊收到？**
+- 确认 `.env` 里 `OWNER_QQ` 填的是你自己的 QQ 号；
+- 让机器人 QQ 号和你的号互为好友（或你的号允许陌生人私聊），否则私聊可能被拦截；
+- 看运行日志里有没有「未配置 OWNER_QQ」「私聊发送日报失败」之类的警告。
 
 **Q: 收不到群消息 / 不总结？**
 - 确认机器人 QQ 号在群里；

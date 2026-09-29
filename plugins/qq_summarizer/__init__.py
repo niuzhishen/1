@@ -1,8 +1,9 @@
 """QQ 群聊消息收集 + 大模型摘要机器人。
 
 - 通过 OneBot 11（NapCat 正向 WebSocket）接收群消息并存入 SQLite
-- 每天定时给指定群发送「群聊日报」
-- 支持在群里发送 总结 /总结 命令手动总结最近的消息
+- 每天定时生成「群聊日报」，通过私聊只发给机器人主人（OWNER_QQ）
+- 主人在群里发送 总结 /总结 命令可手动总结，结果同样私聊发送
+- 群里其他人无法触发命令、看不到任何输出
 - 可选：机器人上线后自动对指定群开启全体禁言（防止群成员消息打扰，仅用于「只读旁观」场景）
 """
 
@@ -44,10 +45,24 @@ if "OneBot V11" not in nonebot.get_adapters():
 MUTE_NOTICE = (
     "🤖 群聊总结机器人已上线。\n"
     "本群已被设置为全体禁言：机器人会静默记录群消息，"
-    "并定时发送群聊日报。如需恢复发言，请管理员关闭全体禁言。"
+    "并定时向管理员私聊发送群聊日报。如需恢复发言，请管理员关闭全体禁言。"
 )
 
 _seen_groups: set[int] = set()
+
+
+# ---------------------------------------------------------------------------
+# 主人私聊通道：所有摘要/日报结果只私聊发给 OWNER_QQ，群里不可见
+# ---------------------------------------------------------------------------
+def is_owner(event: MessageEvent) -> bool:
+    return config.owner_qq is not None and event.user_id == config.owner_qq
+
+
+async def send_to_owner(bot: Bot, text: str) -> None:
+    if config.owner_qq is None:
+        logger.warning("未配置 OWNER_QQ，无法私聊发送结果。请在 .env 中设置 OWNER_QQ。")
+        return
+    await bot.send_private_msg(user_id=config.owner_qq, message=text)
 
 
 @driver.on_bot_connect
@@ -152,16 +167,23 @@ _command_matchers = [
 ]
 
 
-async def _reply_and_finish(bot: Bot, event: MessageEvent, text: str) -> None:
-    await bot.send(event, text)
+async def _finish_to_owner(bot: Bot, text: str) -> None:
+    """把结果私聊发给主人并结束命令处理。"""
+    await send_to_owner(bot, text)
     raise FinishedException
 
 
 async def handle_summary_command(
     bot: Bot, event: MessageEvent, args: Message = CommandArg()
 ) -> None:
+    # 只响应主人；其他人触发时静默忽略，不产生任何可见输出
+    if not is_owner(event):
+        raise FinishedException
+
     if not isinstance(event, GroupMessageEvent):
-        await _reply_and_finish(bot, event, "这个命令只能在群里使用哦。")
+        await _finish_to_owner(
+            bot, "「总结」命令需要在想总结的群里发送，我会把结果私聊发给你。"
+        )
 
     gid = event.group_id
     arg_text = args.extract_plain_text().strip()
@@ -178,9 +200,8 @@ async def handle_summary_command(
         parsed = parse_window(arg_text, now=now) if arg_text else None
         if parsed is None:
             if arg_text:
-                await _reply_and_finish(
+                await _finish_to_owner(
                     bot,
-                    event,
                     f"没看懂时间参数「{arg_text}」。\n"
                     "支持：2小时 / 30分钟 / 今天 / 昨天 / 100条 / 不带参数（默认最近 "
                     f"{config.default_window_minutes} 分钟）",
@@ -194,11 +215,11 @@ async def handle_summary_command(
         messages = store.fetch_window(gid, start, end, limit=config.llm_max_messages)
 
     if not messages:
-        await _reply_and_finish(
-            bot, event, f"该时间范围（{window_desc}）内没有收集到消息。"
-        )
+        await _finish_to_owner(bot, f"该时间范围（{window_desc}）内没有收集到消息。")
 
-    await bot.send(event, f"⏳ 正在总结 {window_desc} 的 {len(messages)} 条消息，请稍候…")
+    await send_to_owner(
+        bot, f"⏳ 正在总结群 {gid} {window_desc} 的 {len(messages)} 条消息，请稍候…"
+    )
 
     group_name = await get_group_name(bot, gid)
     try:
@@ -206,12 +227,12 @@ async def handle_summary_command(
             summarize_messages, messages, group_name, window_desc
         )
     except LLMError as e:
-        await _reply_and_finish(bot, event, f"❌ {e}")
+        await _finish_to_owner(bot, f"❌ {e}")
     except Exception as e:  # noqa: BLE001
         logger.exception("生成摘要出错")
-        await _reply_and_finish(bot, event, f"❌ 生成摘要出错：{e}")
+        await _finish_to_owner(bot, f"❌ 生成摘要出错：{e}")
 
-    await _reply_and_finish(bot, event, summary)
+    await _finish_to_owner(bot, f"📋 群「{group_name}」的总结：\n\n{summary}")
 
 
 for _m in _command_matchers:
@@ -228,21 +249,27 @@ digest_cmd = on_command("日报", priority=5, block=True)
 async def handle_manual_digest(
     bot: Bot, event: MessageEvent, args: Message = CommandArg()
 ) -> None:
-    if not isinstance(event, GroupMessageEvent):
-        await bot.send(event, "这个命令只能在群里使用哦。")
+    # 只响应主人；其他人触发时静默忽略
+    if not is_owner(event):
         raise FinishedException
+
+    if not isinstance(event, GroupMessageEvent):
+        await _finish_to_owner(
+            bot, "「日报」命令需要在想生成日报的群里发送，我会把结果私聊发给你。"
+        )
 
     gid = event.group_id
     end = time.time()
     start = end - config.digest_lookback_hours * 3600
     messages = store.fetch_window(gid, start, end, limit=config.llm_max_messages)
     if not messages:
-        await bot.send(
-            event, f"最近 {config.digest_lookback_hours:g} 小时内没有收集到消息。"
+        await _finish_to_owner(
+            bot, f"最近 {config.digest_lookback_hours:g} 小时内没有收集到消息。"
         )
-        raise FinishedException
 
-    await bot.send(event, f"⏳ 正在生成日报（{len(messages)} 条消息），请稍候…")
+    await send_to_owner(
+        bot, f"⏳ 正在生成群 {gid} 的日报（{len(messages)} 条消息），请稍候…"
+    )
     group_name = await get_group_name(bot, gid)
     window_desc = format_time_range(start, end)
     try:
@@ -251,17 +278,20 @@ async def handle_manual_digest(
         )
     except Exception as e:  # noqa: BLE001
         logger.exception("生成日报出错")
-        await bot.send(event, f"❌ 生成日报出错：{e}")
-        raise FinishedException
+        await _finish_to_owner(bot, f"❌ 生成日报出错：{e}")
     date_str = datetime.now().strftime("%Y-%m-%d")
-    await bot.send(event, f"📊 群聊日报 · {date_str}\n\n{summary}")
-    raise FinishedException
+    await _finish_to_owner(bot, f"📊 群聊日报 · {date_str} · 群「{group_name}」\n\n{summary}")
 
 
 # ---------------------------------------------------------------------------
 # 定时日报
 # ---------------------------------------------------------------------------
 async def send_daily_digest() -> None:
+    """定时日报：汇总各群消息，摘要通过私聊只发给主人，不会出现在任何群里。"""
+    if config.owner_qq is None:
+        logger.warning("未配置 OWNER_QQ，日报无法私聊发送，跳过。请在 .env 中设置。")
+        return
+
     bots = get_bots()
     if not bots:
         logger.warning("日报时间到了，但没有可用的 OneBot 连接，跳过。")
@@ -272,8 +302,8 @@ async def send_daily_digest() -> None:
     start = end - config.digest_lookback_hours * 3600
 
     targets = (
-        config.digest_send_groups
-        if config.digest_send_groups
+        config.digest_groups
+        if config.digest_groups
         else store.groups_with_messages_since(start)
     )
     if not targets:
@@ -281,6 +311,7 @@ async def send_daily_digest() -> None:
         return
 
     date_str = datetime.now().strftime("%Y-%m-%d")
+    sent = 0
     for gid in targets:
         try:
             messages = store.fetch_window(gid, start, end, limit=config.llm_max_messages)
@@ -291,12 +322,16 @@ async def send_daily_digest() -> None:
             summary = await anyio.to_thread.run_sync(
                 summarize_messages, messages, group_name, window_desc
             )
-            await bot.send_group_msg(
-                group_id=gid, message=f"📊 群聊日报 · {date_str}\n\n{summary}"
+            await send_to_owner(
+                bot,
+                f"📊 群聊日报 · {date_str} · 群「{group_name}」（{gid}）\n\n{summary}",
             )
-            logger.info("已发送日报到群 %s（%s 条消息）", gid, len(messages))
+            sent += 1
+            logger.info("已私聊发送日报：群 %s（%s 条消息）", gid, len(messages))
         except Exception as e:  # noqa: BLE001
-            logger.warning("给群 %s 发送日报失败：%s", gid, e)
+            logger.warning("生成/发送群 %s 的日报失败：%s", gid, e)
+    if sent:
+        logger.info("本次日报共私聊发送 %s 个群的摘要。", sent)
 
 
 scheduler.add_job(
@@ -309,8 +344,9 @@ scheduler.add_job(
     misfire_grace_time=600,
 )
 logger.info(
-    "群聊总结机器人已加载：每天 %02d:%02d 发送日报；数据文件 %s",
+    "群聊总结机器人已加载：每天 %02d:%02d 生成日报并私聊发送给 %s；数据文件 %s",
     config.digest_cron_hour,
     config.digest_cron_minute,
+    f"OWNER_QQ={config.owner_qq}" if config.owner_qq else "（未配置，请先设置 OWNER_QQ）",
     config.db_path,
 )

@@ -30,8 +30,10 @@ ONEBOT_PORT = 3101
 LLM_PORT = 3102
 SELF_ID = 10001
 GROUP_ID = 777
+OWNER_QQ = 2000  # 主人 QQ：摘要只私聊发给这个人
 
-sent_by_bot: list[dict] = []  # bot 发出的 send_group_msg 内容
+group_msgs: list[dict] = []    # bot 发到群里的消息（期望为 0）
+private_msgs: list[dict] = []  # bot 发出的私聊消息
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +135,7 @@ async def onebot_handler(ws):
             async for raw in ws:
                 payload = json.loads(raw)
                 action = payload.get("action")
+                params = payload.get("params", {})
                 print(f"    [mock] 收到 API 请求: {action} echo={payload.get('echo')}")
                 if action == "get_group_info":
                     await respond(
@@ -144,9 +147,12 @@ async def onebot_handler(ws):
                             "max_member_count": 200,
                         },
                     )
+                elif action == "send_private_msg" or params.get("message_type") == "private":
+                    private_msgs.append(params)
+                    await respond(payload, {"message_id": 9000 + len(private_msgs)})
                 elif action in ("send_group_msg", "send_msg"):
-                    sent_by_bot.append(payload.get("params", {}))
-                    await respond(payload, {"message_id": 9000 + len(sent_by_bot)})
+                    group_msgs.append(params)
+                    await respond(payload, {"message_id": 8000 + len(group_msgs)})
                 else:
                     await respond(payload, None)
         except websockets.ConnectionClosed:
@@ -166,14 +172,19 @@ async def onebot_handler(ws):
             await ws.send(json.dumps(group_msg(i + 1, 2000 + i % 3, f"成员{i % 3}", t)))
             await asyncio.sleep(0.1)
         await asyncio.sleep(1.5)
-        await ws.send(json.dumps(group_msg(100, 2000, "成员0", "总结 1小时")))
+        # 主人在群里触发「总结」
+        await ws.send(json.dumps(group_msg(100, OWNER_QQ, "主人", "总结 1小时")))
         await asyncio.sleep(5)
-        await ws.send(json.dumps(group_msg(101, 2000, "成员0", "日报")))
+        # 主人触发「日报」
+        await ws.send(json.dumps(group_msg(101, OWNER_QQ, "主人", "日报")))
+        await asyncio.sleep(5)
+        # 非主人试图触发「总结」——必须被静默忽略，不能产生任何回复
+        await ws.send(json.dumps(group_msg(102, 2999, "路人", "总结 1小时")))
 
     responder = asyncio.create_task(api_responder())
     try:
         await scripted_events()
-        await asyncio.sleep(30)  # 给 bot 足够时间处理完
+        await asyncio.sleep(40)  # 留足时间让 bot 处理完（含非主人触发的观察期）
     finally:
         responder.cancel()
 
@@ -212,6 +223,7 @@ def main():
             "DIGEST_LOOKBACK_HOURS": "24",
             "DB_PATH": DB_PATH,
             "COMMAND_START": json.dumps(["", "/"]),
+            "OWNER_QQ": str(OWNER_QQ),
         }
     )
 
@@ -228,12 +240,12 @@ def main():
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
+        started = time.time()
         try:
-            # 等待全部流程完成（约 1 + 2 + 6 + 6 = 15 秒）
-            for _ in range(60):
+            # 等待全部流程完成（消息→总结→日报→非主人触发观察期，约 17 秒）
+            while time.time() - started < 25:
                 await asyncio.sleep(0.5)
-                if len(sent_by_bot) >= 4:  # ⏳+摘要(总结) + ⏳+日报(日报)
-                    await asyncio.sleep(1)
+                if len(private_msgs) >= 4 and time.time() - started > 22:
                     break
         finally:
             stop.set()
@@ -272,23 +284,35 @@ def main():
         "命令消息本身没有被当作聊天内容入库",
     )
 
-    replied = [str(p.get("message", "")) for p in sent_by_bot]
-    flat = " || ".join(str(m) for m in replied)
-    check("正在总结" in flat, "「总结」命令发送了进度提示")
-    check("这是测试摘要" in flat, "「总结」命令回发了大模型生成的摘要")
-    check("正在生成日报" in flat, "「日报」命令发送了进度提示")
-    check("群聊日报" in flat, "「日报」命令回发了日报")
-    check(len(replied) >= 4, f"机器人共发出 {len(replied)} 条消息（期望 ≥4）")
+    private_texts = [str(p.get("message", "")) for p in private_msgs]
+    flat = " || ".join(private_texts)
+
+    check(len(group_msgs) == 0, f"群里零输出：机器人没有向任何群发消息（实际 {len(group_msgs)} 条）")
+    check(
+        all(int(p.get("user_id", -1)) == OWNER_QQ for p in private_msgs) and private_msgs,
+        f"所有回复都私聊发给了主人 {OWNER_QQ}",
+    )
+    check("正在总结" in flat, "「总结」命令私聊发送了进度提示")
+    check("这是测试摘要" in flat, "「总结」命令私聊回发了大模型生成的摘要")
+    check("正在生成群" in flat and "日报" in flat, "「日报」命令私聊发送了进度提示")
+    check("群聊日报" in flat, "「日报」命令私聊回发了日报")
+    check(
+        len(private_msgs) == 4,
+        f"非主人触发「总结」被静默忽略（私聊消息数 {len(private_msgs)}，期望恰好 4 条）",
+    )
 
     if failures:
         print("\n----- 机器人日志（末尾 40 行）-----")
         print("\n".join(bot_log.splitlines()[-40:]))
-        print("\n----- bot 发出的消息 -----")
-        for m in replied:
+        print("\n----- bot 发出的私聊消息 -----")
+        for m in private_texts:
+            print(repr(m)[:200])
+        print("\n----- bot 发出的群消息 -----")
+        for m in group_msgs:
             print(repr(m)[:200])
         sys.exit(1)
 
-    print("\n🎉 集成测试全部通过：连接、消息入库、总结命令、日报命令均正常。")
+    print("\n🎉 集成测试全部通过：消息入库正常，摘要只私聊发给主人，群内零输出，非主人触发被忽略。")
 
 
 if __name__ == "__main__":

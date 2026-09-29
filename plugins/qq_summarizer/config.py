@@ -14,6 +14,11 @@ class SummarizerConfig(BaseModel):
     track_groups: Union[str, list[int]] = "*"
     on_connect_group_ids: list[int] = []
 
+    # ---- 接收人 ----
+    # 你的 QQ 号：所有日报/总结结果只通过私聊发给你，
+    # 且只有你能触发 总结/日报 命令
+    owner_qq: int | None = None
+
     # ---- 大模型 ----
     llm_api_key: str = ""
     llm_base_url: str | None = None
@@ -26,7 +31,9 @@ class SummarizerConfig(BaseModel):
     digest_cron_minute: int = 0
     digest_timezone: str = "Asia/Shanghai"
     digest_lookback_hours: float = 24.0
-    digest_send_groups: list[int] = []
+    # 日报要总结哪些群；留空 [] 则总结所有有消息的群
+    # （结果统一私聊发给 OWNER_QQ，不会发到群里）
+    digest_groups: list[int] = []
 
     # ---- 其它 ----
     default_window_minutes: int = 120
