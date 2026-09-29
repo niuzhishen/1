@@ -164,6 +164,7 @@ ON_CONNECT_GROUP_IDS=[群号1, 群号2]
 | `LLM_MODEL` | `gpt-4o-mini` | 模型名 |
 | `LLM_MAX_MESSAGES` | `2000` | 单次最多喂给模型的消息条数（取最近）|
 | `LLM_MAX_CHARS_PER_MESSAGE` | `500` | 单条消息超长时的截断长度 |
+| `SUMMARY_FOCUS` | 考研主题 | 摘要「🎯 重点关注速览」要盯的话题，按群主题自定义，留空关闭该板块 |
 | `DIGEST_CRON_HOUR` / `DIGEST_CRON_MINUTE` | `22` / `0` | 日报生成时间 |
 | `DIGEST_TIMEZONE` | `Asia/Shanghai` | 日报时区 |
 | `DIGEST_LOOKBACK_HOURS` | `24` | 日报回看多少小时 |
@@ -230,9 +231,10 @@ python tests/test_integration.py
 - 群里如果刚被禁言过，先等机器人上线动作完成。
 
 **Q: 摘要内容不理想？**
+- 改 `SUMMARY_FOCUS`：告诉模型你的群核心话题（如「考研调剂/院校信息」），摘要开头会有「🎯 重点关注速览」逐条提取；
 - 换更强的模型（如 `deepseek-chat`、`gpt-4o`）；
 - 调大 `LLM_MAX_MESSAGES` / `LLM_MAX_CHARS_PER_MESSAGE`（注意 token 上限）；
-- 摘要的提示词在 `plugins/qq_summarizer/summarizer.py` 的 `SYSTEM_PROMPT`，可自行调整。
+- 提示词结构在 `plugins/qq_summarizer/summarizer.py` 的 `build_system_prompt`，可自行调整。
 
 **Q: 消息存哪里？怎么清理？**
 存在 `DB_PATH`（默认 `data/messages.db`）的 SQLite 文件里。删除该文件即清空（机器人重启会自动重建）。

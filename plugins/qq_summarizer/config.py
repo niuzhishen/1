@@ -25,6 +25,11 @@ class SummarizerConfig(BaseModel):
     llm_model: str = "gpt-4o-mini"
     llm_max_messages: int = 2000
     llm_max_chars_per_message: int = 500
+    # 摘要重点关注的话题（按你的群主题自定义，会写进给模型的提示词）
+    summary_focus: str = (
+        "考研调剂与院校招生信息：院校/专业提及、分数线与录取情况、调剂名额与招生信息、"
+        "复试与备考经验、参考书与资料分享"
+    )
 
     # ---- 定时日报 ----
     digest_cron_hour: int = 22

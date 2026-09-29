@@ -12,12 +12,24 @@ from .config import config
 
 logger = logging.getLogger("qq_summarizer")
 
-SYSTEM_PROMPT = """你是一名群聊内容分析助手。请根据提供的 QQ 群聊记录，生成一份简明、结构化的中文摘要，让没看群的人能快速了解发生了什么。
+def build_system_prompt(focus: str) -> str:
+    """生成给大模型的系统提示词；focus 为机器人主人关注的核心话题。"""
+    focus_block = ""
+    if focus.strip():
+        focus_block = f"""
+## 🎯 重点关注速览
+主人最关心以下话题，请优先、详细地提取（宁多勿漏，逐条列出关键信息点，
+包含具体名称、数字、时间等细节）：
+{focus.strip()}
+若这段时间内没有相关讨论，写「这段时间没有相关讨论」。
+
+"""
+    return f"""你是一名群聊内容分析助手。请根据提供的 QQ 群聊记录，生成一份简明、结构化的中文摘要，让没看群的人能快速了解发生了什么。
 
 请按以下 Markdown 结构输出（没有内容的章节可以省略）：
 
-# 📋 群聊摘要（{时间范围}）
-
+# 📋 群聊摘要
+{focus_block}
 ## 主要话题
 按讨论热度列出 3~6 个话题，每个话题用 1~3 句话概括大家聊了什么。
 
@@ -34,7 +46,7 @@ SYSTEM_PROMPT = """你是一名群聊内容分析助手。请根据提供的 QQ 
 1. 只依据给出的聊天记录总结，绝不编造内容或人名。
 2. 如果大部分是无意义闲聊，也要如实概括整体氛围和梗。
 3. 保持客观中立，不要评价群成员。
-4. 总长度控制在 600 字以内。"""
+4. 除「重点关注速览」外，其余部分总长度控制在 600 字以内。"""
 
 
 class LLMError(Exception):
@@ -89,7 +101,7 @@ def summarize_messages(
             resp = client.chat.completions.create(
                 model=config.llm_model,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": build_system_prompt(config.summary_focus)},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,

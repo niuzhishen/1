@@ -102,6 +102,16 @@ def test_transcript():
     assert "…(截断)" in text  # 超长消息被截断
 
 
+def test_system_prompt_focus():
+    from plugins.qq_summarizer.summarizer import build_system_prompt
+
+    prompt = build_system_prompt("考研调剂与院校信息")
+    assert "🎯 重点关注速览" in prompt
+    assert "考研调剂与院校信息" in prompt
+    # 留空时不加速览板块
+    assert "重点关注速览" not in build_system_prompt("  ")
+
+
 def test_format_time_range():
     s = datetime(2026, 9, 29, 8, 0).timestamp()
     e = datetime(2026, 9, 29, 22, 0).timestamp()
