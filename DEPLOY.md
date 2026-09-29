@@ -220,6 +220,7 @@ journalctl -u qq-summarizer -f     # 看日志
 | 现象 | 原因与处理 |
 | --- | --- |
 | 安装器报 `HTTP状态码：404 / 下载QQ失败` | 一键包内置的 QQ 下载链接失效（[已知 bug](https://github.com/NapNeko/NapCatQQ/issues/1973)）。去 [im.qq.com](https://im.qq.com/) 下载最新 QQ 安装包，**改名为 `QQ.exe`** 放到 `NapCatInstaller.exe` 同目录，重新运行即可跳过下载；仍不行就改用 111MB 的 `NapCat.Shell.Windows.Node.zip` 完整包 |
+| 启动后弹「文件已损坏，请重新安装QQ」 | 便携解压版 QQ 没通过官方完整性校验（[已知问题](https://github.com/NapNeko/NapCatQQ/issues/2019)）。**改用官方推荐路线**：① 用官网安装器正常安装 QQ；② 下载 `NapCat.Shell.zip`（28MB）解压；③ 双击 `launcher.bat`（Win10 用 `launcher-win10.bat`），它会自动寻找已安装的 QQ 并注入。若仍报错：以管理员身份运行、并确认没装过 LiteLoader 等插件框架 |
 | 日志刷 `Connection refused` | NapCat 没启动 / 没开正向 WS / 端口或地址不一致 |
 | 提示 `does not support websocket client` | `.env` 里 `DRIVER=~fastapi+~websockets` 被改了，恢复它 |
 | 连上了但收不到群消息 | 小号不在那个群里；或 `TRACK_GROUPS` 没包含该群（默认 `*` 全部）|
