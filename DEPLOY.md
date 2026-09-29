@@ -254,6 +254,8 @@ journalctl -u qq-summarizer -f     # 看日志
 | 启动后弹「文件已损坏，请重新安装QQ」 | 便携解压版 QQ 没通过官方完整性校验（[已知问题](https://github.com/NapNeko/NapCatQQ/issues/2019)）。**改用官方推荐路线**：① 用官网安装器正常安装 QQ；② 下载 `NapCat.Shell.zip`（28MB）解压；③ 双击 `launcher.bat`（Win10 用 `launcher-win10.bat`），它会自动寻找已安装的 QQ 并注入。若仍报错：以管理员身份运行、并确认没装过 LiteLoader 等插件框架 |
 | 登录后控制台一直刷 MMKV 日志、找不到 WebUI 地址 | 没卡死，WebUI 地址在启动初期打印过被刷上去了。① 直接浏览器开 `http://127.0.0.1:6099/webui`，token 在 `config/webui.json` 里看；② 或干脆跳过 WebUI：编辑 `config/onebot11_<你的QQ号>.json`（注意配置要包在 `"network"` 字段里，见下），重启 `launcher.bat`。找不到 config 目录时用 `Get-ChildItem C:\Users\<你> -Recurse -Include "webui.json","onebot11_*.json"` 搜 |
 | 日志刷 `Connection refused` | NapCat 没启动 / 没开正向 WS / 端口或地址不一致 |
+| bot 打印一次 `WebSocket Closed (1005)` 后自动 connected | 正常：WebUI 保存配置时 NapCat 重启 WS 服务踢掉旧连接，bot 会自动重连，忽略即可 |
+| `connected` / `WebSocket Closed` 反复循环 | token 不匹配：把 WebUI 里那条 WS 服务器的 token 清空保存；或把 token 填进 `.env` 的 `ONEBOT_ACCESS_TOKEN` 并重启 bot |
 | 提示 `does not support websocket client` | `.env` 里 `DRIVER=~fastapi+~websockets` 被改了，恢复它 |
 | 连上了但收不到群消息 | 小号不在那个群里；或 `TRACK_GROUPS` 没包含该群（默认 `*` 全部）|
 | 收不到私聊日报/总结 | ① `OWNER_QQ` 填错；② 两个号没互加好友或隐私设置拦截；③ 看日志有无「未配置 OWNER_QQ」「发送失败」警告 |
