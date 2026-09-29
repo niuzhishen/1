@@ -33,14 +33,18 @@
 
 ## 第 1 步：安装并登录 NapCat
 
-1. 到 [NapCat 发布页](https://github.com/NapNeko/NapCatQQ/releases) 下载 `NapCatInstaller.zip`（Windows）；
-2. 解压，运行 `NapCatInstaller.exe` 完成安装；
-3. 启动 NapCat，黑色窗口会打印类似：
+Releases 页面会有好几个压缩包，选 **`NapCat.Shell.Windows.OneKey.zip`**（官方推荐的 Windows 一键包，包体小，运行时自动下载所需组件；若你的网络下载组件慢，可改下 111MB 的 `NapCat.Shell.Windows.Node.zip`，内容齐全无需联网下载）。
+
+1. 下载 `NapCat.Shell.Windows.OneKey.zip` 并解压；
+2. 双击运行其中的 **`NapCatInstaller.exe`**，等待自动化配置完成；
+3. 进入生成的 **`NapCat.XXXX.Shell`** 目录；
+4. 启动：双击 **`napcat.bat`**；
+   （也可以新建一个 `quick.bat`，内容写 `NapCatWinBootMain.exe 你的小号QQ号`，以后双击它就能直接启动对应账号）
+5. 黑色窗口会打印类似：
    ```
    [NapCat] [WebUi] WebUi Publish Panel Url: http://127.0.0.1:6099/webui?token=xxxxxx
    ```
-4. 浏览器打开这个地址（Ctrl+点击也行），进入 NapCat 的 WebUI；
-5. 在 WebUI 里**扫码登录机器人小号**（用小号的手机 QQ 扫码）。
+6. 浏览器打开这个地址，进入 NapCat 的 WebUI，**扫码登录机器人小号**（用小号的手机 QQ 扫码）。
 
 > token 每次启动可能变化，直接从启动日志里的完整 URL 复制最省事。
 
