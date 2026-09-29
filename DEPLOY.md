@@ -215,9 +215,8 @@ python bot.py
 ## 第 9 步（可选）：后台常驻
 
 **Windows**
-- 最简单：保持终端窗口开着（最小化即可）；
-- 想开机自启/后台运行：用 [WinSW](https://github.com/winsw/winsw) 或任务计划程序把
-  `.venv\Scripts\python.exe bot.py` 注册为服务/计划任务。
+- 最简单：双击项目自带的 `启动机器人.bat`，保持窗口开着（最小化即可）；
+- 想开机自启：把 `启动机器人.bat` 和 NapCat 的 `launcher.bat` 的快捷方式放进开机启动目录（`Win+R` → `shell:startup`），并把电源「睡眠」设为「从不」。
 
 **Linux（systemd 示例）**
 
